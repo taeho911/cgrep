@@ -74,7 +74,7 @@ go install
 
 その理由は concurrency オプションを指定した場合、プログラムは goroutine で作業を並列的に進めるためである。（goroutine != thread）
 
-基本的に可用可能な cpu core を使うが（Go 1.15 以前のバージョンではデフォルトで 1　core しか使わない）、もし使われる cpu core 数を制限したければ以下のように GOMAXPROCS を指定する。
+基本的に使用可能な cpu core を使うが（Go 1.15 以前のバージョンではデフォルトで 1 core しか使わない）、もし使われる cpu core 数を制限したければ以下のように GOMAXPROCS を指定する。
 
 ----
 # CPU core を1個だけ使って parallelism を無くす。
