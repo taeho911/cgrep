@@ -7,6 +7,8 @@ import (
 	"bufio"
 	"path/filepath"
 	"regexp"
+	"sync"
+	"bytes"
 )
 
 type regexArray []regexp.Regexp
@@ -56,6 +58,7 @@ func main() {
 	flag.Var(&ra, "e", "Regex")
 	flag.Var(&ia, "v", "Invert match")
 	flag.Var(&sa, "s", "Skip dir")
+	concFlag := flag.Bool("c", false, "Concurrent search")
 	flag.Parse()
 	tail := flag.Args()
 	if len(ra) == 0 {
@@ -75,10 +78,11 @@ func main() {
 	if len(dirs) < 1 {
 		dirs = append(dirs, ".")
 	}
-	grepContents(ra, ia, sa, dirs)
+	grepContents(ra, ia, sa, dirs, *concFlag)
 }
 
-func grepContents(ra regexArray, ia invertArray, sa skipDirArray, dirs []string) {
+func grepContents(ra regexArray, ia invertArray, sa skipDirArray, dirs []string, concFlag bool) {
+	var wg sync.WaitGroup
 	for i := 0; i < len(dirs); i++ {
 		err := filepath.Walk(dirs[i], func(path string, info os.FileInfo, err error) error {
 			skipDir := false
@@ -93,11 +97,12 @@ func grepContents(ra regexArray, ia invertArray, sa skipDirArray, dirs []string)
 				return filepath.SkipDir
 			}
 			if !info.IsDir() {
-				// if path == `App\BankBoxService\bankboxservice-bl\src\main\java\jp\co\rakutenbank\fes\mainservice\dataaccess\entity\BankBoxContract.java` {
-				// 	fmt.Println("Found!")
-				// 	grepWork(path, ra, ia)
-				// }
-				grepWork(path, ra, ia)
+				if concFlag {
+					wg.Add(1)
+					go grepWorkConc(path, ra, ia, &wg)
+				} else {
+					grepWork(path, ra, ia)
+				}
 			}
 			return nil
 		})
@@ -106,6 +111,34 @@ func grepContents(ra regexArray, ia invertArray, sa skipDirArray, dirs []string)
 			os.Exit(1)
 		}
 	}
+	wg.Wait()
+}
+
+func grepWorkConc(file string, ra regexArray, ia invertArray, wg *sync.WaitGroup) {
+	defer wg.Done()
+	fp, err := os.Open(file)
+	if err != nil {
+		return
+	}
+	defer fp.Close()
+	scanner := bufio.NewScanner(fp)
+	lineNum := 0
+	var greps []grep
+	for scanner.Scan() {
+		lineNum++
+		line := scanner.Text()
+		if (len(ia) > 0 && !matchArray(line, ia)) && matchArray(line, ra) {
+			greps = append(greps, grep{lineNum, line})
+		}
+	}
+	if len(greps) > 0 {
+		grepResult := grepStruct{file, greps}
+		printGrepResult(grepResult)
+	}
+	if err := scanner.Err(); err != nil {
+		return
+	}
+	return
 }
 
 func grepWork(file string, ra regexArray, ia invertArray) error {
@@ -150,10 +183,16 @@ func matchArray(str string, ra []regexp.Regexp) bool {
 }
 
 func printGrepResult(gr grepStruct) {
-	fmt.Println("---")
-	fmt.Println(gr.file)
+	var b bytes.Buffer
+	b.WriteString(fmt.Sprintf("---\n%s\n", gr.file))
 	for i := 0; i < len(gr.greps); i++ {
-		fmt.Printf("%-5d %s\n",gr.greps[i].lineNum, gr.greps[i].line)
-		// fmt.Println(gr.greps[i].lineNum, gr.greps[i].line)
+		b.WriteString(fmt.Sprintf("%-5d %s\n", gr.greps[i].lineNum, gr.greps[i].line))
 	}
+	fmt.Printf(b.String())
+	
+	// fmt.Println("---")
+	// fmt.Println(gr.file)
+	// for i := 0; i < len(gr.greps); i++ {
+	// 	fmt.Printf("%-5d %s\n", gr.greps[i].lineNum, gr.greps[i].line)
+	// }
 }
