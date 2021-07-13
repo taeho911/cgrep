@@ -1,0 +1,83 @@
+= cgrep
+:toc:
+:toc-title: Index
+
+== Summary
+
+指定されたディレクトリに配置されている全てのファイルを読み込み、中身から grep するツール。
+
+== Prerequisite
+
+https://golang.org/doc/install[Go 1.16]
+
+== Build
+
+----
+git clone http://pcommgt01v/vendor/reds/cgrep.git cgrep
+cd cgrep
+go install
+----
+
+ビルドされた実行ファイルは $GOPATH/bin に配置される。
+
+$GOPATH を確認したい場合は以下のコマンドを実行する。
+
+----
+go env GOPATH
+----
+
+もし、他の場所に実行ファイルを配置したい場合は go install 前に $GOBIN をエクスポートしておく。
+
+----
+export GOBIN=<配置パス>
+go install
+----
+
+== Params
+
+[cols="5*",options="header"]
+|===
+|Option|Explanation|Type|Default|Example
+
+|-e
+|複数の pattern を指定
+|string
+|
+|cgrep -e pattern1 -e pattern2
+
+|-v
+|除外する pattern を指定
+|string
+|
+|cgrep -v foo -v bar pattern dir
+
+|-s
+|検索をスキップするディレクトリ
+|string
+|
+|cgrep -s target -s .git pattern
+
+|-c
+|Concurrency 使用有無
+|bool
+|false
+|cgrep -c pattern dir1 dir2
+|===
+
+== Tips
+
+=== Concurrency について
+
+設定すると従来の直列的作業を concurrent 作業に変える。
+
+これにより、検索速度が上昇するが、検索結果の出力順番が変化することが良くある。
+
+その理由は concurrency オプションを指定した場合、プログラムは goroutine で作業を並列的に進めるためである。（goroutine != thread）
+
+基本的に可用可能な cpu core を使うが（Go 1.15 以前のバージョンではデフォルトで 1　core しか使わない）、もし使われる cpu core 数を制限したければ以下のように GOMAXPROCS を指定する。
+
+----
+# CPU core を1個だけ使って parallelism を無くす。
+export GOMAXPROCS=1
+cgrep -c pattern
+----
