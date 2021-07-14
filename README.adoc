@@ -68,6 +68,12 @@ Windows/amd64 の場合は以下でビルド済み実行ファイルをローカ
 |bool
 |false
 |cgrep -c pattern dir1 dir2
+
+|-i
+|Case insensitive 検索
+|bool
+|false
+|cgrep -i pattern
 |===
 
 == Tips

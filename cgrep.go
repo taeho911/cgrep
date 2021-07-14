@@ -11,7 +11,7 @@ import (
 	"bytes"
 )
 
-type regexArray []regexp.Regexp
+type regexArray []string
 type invertArray []regexp.Regexp
 type skipDirArray []string
 type grep struct {
@@ -28,7 +28,7 @@ func (ra *regexArray) String() string {
 }
 
 func (ra *regexArray) Set(val string) error {
-	*ra = append(*ra, *regexp.MustCompile(val))
+	*ra = append(*ra, val)
 	return nil
 }
 
@@ -59,6 +59,7 @@ func main() {
 	flag.Var(&ia, "v", "Invert match")
 	flag.Var(&sa, "s", "Skip dir")
 	concFlag := flag.Bool("c", false, "Concurrent search")
+	caseInsensitiveFlag := flag.Bool("i", false, "Case insensitive match")
 	flag.Parse()
 	tail := flag.Args()
 	if len(ra) == 0 {
@@ -66,7 +67,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Args not enough => len(args) = %d\n", len(tail))
 			os.Exit(1)
 		}
-		ra = append(ra, *regexp.MustCompile(tail[0]))
+		ra = append(ra, tail[0])
 		dirs = tail[1:]
 	} else {
 		dirs = tail[:]
@@ -78,15 +79,21 @@ func main() {
 	if len(dirs) < 1 {
 		dirs = append(dirs, ".")
 	}
-	grepContents(ra, ia, sa, dirs, *concFlag)
+	var cra []regexp.Regexp
+	for i := 0; i < len(ra); i++ {
+		if *caseInsensitiveFlag {
+			cra = append(cra, *regexp.MustCompile("(?i)" + ra[i]))
+		} else {
+			cra = append(cra, *regexp.MustCompile(ra[i]))
+		}
+	}
+	grepContents(cra, ia, sa, dirs, *concFlag)
 }
 
-func grepContents(ra regexArray, ia invertArray, sa skipDirArray, dirs []string, concFlag bool) {
+func grepContents(cra []regexp.Regexp, ia invertArray, sa skipDirArray, dirs []string, concFlag bool) {
 	var wg sync.WaitGroup
 	for i := 0; i < len(dirs); i++ {
-		// fmt.Println(dirs[i])
 		err := filepath.Walk(dirs[i], func(path string, info os.FileInfo, err error) error {
-			// fmt.Println(path)
 			skipDir := false
 			fileName := info.Name()
 			for i := 0; i < len(sa); i++ {
@@ -99,12 +106,11 @@ func grepContents(ra regexArray, ia invertArray, sa skipDirArray, dirs []string,
 				return filepath.SkipDir
 			}
 			if !info.IsDir() {
-				// fmt.Println(path)
 				if concFlag {
 					wg.Add(1)
-					go grepWorkConc(path, ra, ia, &wg)
+					go grepWorkConc(path, cra, ia, &wg)
 				} else {
-					grepWork(path, ra, ia)
+					grepWork(path, cra, ia)
 				}
 			}
 			return nil
@@ -117,7 +123,7 @@ func grepContents(ra regexArray, ia invertArray, sa skipDirArray, dirs []string,
 	wg.Wait()
 }
 
-func grepWorkConc(file string, ra regexArray, ia invertArray, wg *sync.WaitGroup) {
+func grepWorkConc(file string, cra []regexp.Regexp, ia invertArray, wg *sync.WaitGroup) {
 	defer wg.Done()
 	fp, err := os.Open(file)
 	if err != nil {
@@ -133,7 +139,7 @@ func grepWorkConc(file string, ra regexArray, ia invertArray, wg *sync.WaitGroup
 		if len(ia) > 0 && matchArray(line, ia) {
 			continue
 		}
-		if matchArray(line, ra) {
+		if matchArray(line, cra) {
 			greps = append(greps, grep{lineNum, line})
 		}
 	}
@@ -147,7 +153,7 @@ func grepWorkConc(file string, ra regexArray, ia invertArray, wg *sync.WaitGroup
 	return
 }
 
-func grepWork(file string, ra regexArray, ia invertArray) error {
+func grepWork(file string, cra []regexp.Regexp, ia invertArray) error {
 	fp, err := os.Open(file)
 	if err != nil {
 		return err
@@ -168,7 +174,7 @@ func grepWork(file string, ra regexArray, ia invertArray) error {
 		if len(ia) > 0 && matchArray(line, ia) {
 			continue
 		}
-		if matchArray(line, ra) {
+		if matchArray(line, cra) {
 			greps = append(greps, grep{lineNum, line})
 		}
 	}
@@ -182,9 +188,9 @@ func grepWork(file string, ra regexArray, ia invertArray) error {
 	return nil
 }
 
-func matchArray(str string, ra []regexp.Regexp) bool {
-	for i := 0; i < len(ra); i++ {
-		if ra[i].MatchString(str) {
+func matchArray(str string, cra []regexp.Regexp) bool {
+	for i := 0; i < len(cra); i++ {
+		if cra[i].MatchString(str) {
 			return true
 		}
 	}
@@ -198,10 +204,4 @@ func printGrepResult(gr grepStruct) {
 		b.WriteString(fmt.Sprintf("%-5d %s\n", gr.greps[i].lineNum, gr.greps[i].line))
 	}
 	fmt.Printf(b.String())
-	
-	// fmt.Println("---")
-	// fmt.Println(gr.file)
-	// for i := 0; i < len(gr.greps); i++ {
-	// 	fmt.Printf("%-5d %s\n", gr.greps[i].lineNum, gr.greps[i].line)
-	// }
 }
