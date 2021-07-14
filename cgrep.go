@@ -84,7 +84,9 @@ func main() {
 func grepContents(ra regexArray, ia invertArray, sa skipDirArray, dirs []string, concFlag bool) {
 	var wg sync.WaitGroup
 	for i := 0; i < len(dirs); i++ {
+		// fmt.Println(dirs[i])
 		err := filepath.Walk(dirs[i], func(path string, info os.FileInfo, err error) error {
+			// fmt.Println(path)
 			skipDir := false
 			fileName := info.Name()
 			for i := 0; i < len(sa); i++ {
@@ -97,6 +99,7 @@ func grepContents(ra regexArray, ia invertArray, sa skipDirArray, dirs []string,
 				return filepath.SkipDir
 			}
 			if !info.IsDir() {
+				// fmt.Println(path)
 				if concFlag {
 					wg.Add(1)
 					go grepWorkConc(path, ra, ia, &wg)
@@ -127,7 +130,10 @@ func grepWorkConc(file string, ra regexArray, ia invertArray, wg *sync.WaitGroup
 	for scanner.Scan() {
 		lineNum++
 		line := scanner.Text()
-		if (len(ia) > 0 && !matchArray(line, ia)) && matchArray(line, ra) {
+		if len(ia) > 0 && matchArray(line, ia) {
+			continue
+		}
+		if matchArray(line, ra) {
 			greps = append(greps, grep{lineNum, line})
 		}
 	}
@@ -159,7 +165,10 @@ func grepWork(file string, ra regexArray, ia invertArray) error {
 	for scanner.Scan() {
 		lineNum++
 		line := scanner.Text()
-		if (len(ia) > 0 && !matchArray(line, ia)) && matchArray(line, ra) {
+		if len(ia) > 0 && matchArray(line, ia) {
+			continue
+		}
+		if matchArray(line, ra) {
 			greps = append(greps, grep{lineNum, line})
 		}
 	}
