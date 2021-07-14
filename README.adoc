@@ -33,6 +33,8 @@ export GOBIN=<配置パス>
 go install
 ----
 
+Windows/amd64 の場合はlink:\\tofs2501\share\開発部\預金2チーム\テホ\cgrep\v1.0.0[ここ]でビルド済み実行ファイルをローカルにコピーして利用可能。
+
 == Params
 
 [cols="5*",options="header"]
