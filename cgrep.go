@@ -115,6 +115,8 @@ func main() {
 		encoding = japanese.ISO2022JP
 	case encs[4]:
 		encoding = korean.EUCKR
+	default:
+		encoding = unicode.UTF8
 	}
 	grepContents(cra, ia, sa, dirs, *concFlag, encoding, *filenameOnlyFlag)
 }
@@ -215,7 +217,7 @@ func grepWork(
 	defer fp.Close()
 	reader := transform.NewReader(fp, encoding.NewDecoder())
 	scanner := bufio.NewScanner(reader)
-	// If you want to increase buffer size
+	// If you want to change buffer size ...
 	// const maxBufSize = 256
 	// scanner.Buffer(make([]byte, maxBufSize), maxBufSize)
 	lineNum := 0
