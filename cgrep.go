@@ -134,6 +134,9 @@ func grepContents(
 	for i := 0; i < len(dirs); i++ {
 		err := filepath.Walk(dirs[i], func(path string, info os.FileInfo, err error) error {
 			skipDir := false
+			if info == nil {
+				return filepath.SkipDir
+			}
 			fileName := info.Name()
 			for i := 0; i < len(sa); i++ {
 				if fileName == sa[i] {
