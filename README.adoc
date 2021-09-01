@@ -119,3 +119,7 @@ utf8, sjis, eucjp, iso2022jp, enckr
 export GOMAXPROCS=1
 cgrep -c pattern
 ----
+
+== Sample Images
+
+image::images/sample1.png[caption="Figure 1"]
