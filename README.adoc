@@ -74,9 +74,35 @@ Windows/amd64 の場合は以下でビルド済み実行ファイルをローカ
 |bool
 |false
 |cgrep -i pattern
+
+|--enc
+|Encoding を指定
+|string
+|utf8
+|cgrep --enc sjis pattern
+
+|--all
+|.git/.svn ディレクトリスキップ解除
+|bool
+|false
+|cgrep --all pattern
+
+|-f
+|ファイル名だけ出力
+|bool
+|false
+|cgrep -f pattern
 |===
 
 == Tips
+
+=== 指定可能な Encoding
+
+utf8, sjis, eucjp, iso2022jp, enckr
+
+=== デフォルト検索の挙動
+
+..git と ..svn ディレクトリはデフォルトで検索をスキップする。
 
 === Concurrency について
 

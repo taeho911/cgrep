@@ -1,14 +1,20 @@
 package main
 
 import (
-	"os"
+	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
-	"bufio"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sync"
-	"bytes"
+
+	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/japanese"
+	"golang.org/x/text/encoding/korean"
+	"golang.org/x/text/encoding/unicode"
+	"golang.org/x/text/transform"
 )
 
 type regexArray []string
@@ -16,10 +22,10 @@ type invertArray []regexp.Regexp
 type skipDirArray []string
 type grep struct {
 	lineNum int
-	line string
+	line    string
 }
 type grepStruct struct {
-	file string
+	file  string
 	greps []grep
 }
 
@@ -55,11 +61,16 @@ func main() {
 	var ia invertArray
 	var sa skipDirArray
 	var dirs []string
+	encs := []string{"utf8", "sjis", "encjp", "iso2022jp", "enckr"}
+	defaultSkipDirs := []string{".git", ".svn"}
 	flag.Var(&ra, "e", "Regex")
 	flag.Var(&ia, "v", "Invert match")
 	flag.Var(&sa, "s", "Skip dir")
+	allFlag := flag.Bool("all", false, "Search all directories including .git and .svn")
 	concFlag := flag.Bool("c", false, "Concurrent search")
 	caseInsensitiveFlag := flag.Bool("i", false, "Case insensitive match")
+	enc := flag.String("enc", encs[0], fmt.Sprintf("Encoding %v", encs))
+	filenameOnlyFlag := flag.Bool("f", false, "Print filename only")
 	flag.Parse()
 	tail := flag.Args()
 	if len(ra) == 0 {
@@ -79,6 +90,11 @@ func main() {
 	if len(dirs) < 1 {
 		dirs = append(dirs, ".")
 	}
+	if !(*allFlag) {
+		for i := 0; i < len(defaultSkipDirs); i++ {
+			sa = append(sa, defaultSkipDirs[i])
+		}
+	}
 	var cra []regexp.Regexp
 	for i := 0; i < len(ra); i++ {
 		if *caseInsensitiveFlag {
@@ -87,10 +103,31 @@ func main() {
 			cra = append(cra, *regexp.MustCompile(ra[i]))
 		}
 	}
-	grepContents(cra, ia, sa, dirs, *concFlag)
+	var encoding encoding.Encoding
+	switch *enc {
+	case encs[0]:
+		encoding = unicode.UTF8
+	case encs[1]:
+		encoding = japanese.ShiftJIS
+	case encs[2]:
+		encoding = japanese.EUCJP
+	case encs[3]:
+		encoding = japanese.ISO2022JP
+	case encs[4]:
+		encoding = korean.EUCKR
+	}
+	grepContents(cra, ia, sa, dirs, *concFlag, encoding, *filenameOnlyFlag)
 }
 
-func grepContents(cra []regexp.Regexp, ia invertArray, sa skipDirArray, dirs []string, concFlag bool) {
+func grepContents(
+	cra []regexp.Regexp,
+	ia invertArray,
+	sa skipDirArray,
+	dirs []string,
+	concFlag bool,
+	encoding encoding.Encoding,
+	filenameOnlyFlag bool,
+) {
 	var wg sync.WaitGroup
 	for i := 0; i < len(dirs); i++ {
 		err := filepath.Walk(dirs[i], func(path string, info os.FileInfo, err error) error {
@@ -108,9 +145,9 @@ func grepContents(cra []regexp.Regexp, ia invertArray, sa skipDirArray, dirs []s
 			if !info.IsDir() {
 				if concFlag {
 					wg.Add(1)
-					go grepWorkConc(path, cra, ia, &wg)
+					go grepWorkConc(path, cra, ia, encoding, &wg, filenameOnlyFlag)
 				} else {
-					grepWork(path, cra, ia)
+					grepWork(path, cra, ia, encoding, filenameOnlyFlag)
 				}
 			}
 			return nil
@@ -123,14 +160,22 @@ func grepContents(cra []regexp.Regexp, ia invertArray, sa skipDirArray, dirs []s
 	wg.Wait()
 }
 
-func grepWorkConc(file string, cra []regexp.Regexp, ia invertArray, wg *sync.WaitGroup) {
+func grepWorkConc(
+	file string,
+	cra []regexp.Regexp,
+	ia invertArray,
+	encoding encoding.Encoding,
+	wg *sync.WaitGroup,
+	filenameOnlyFlag bool,
+) {
 	defer wg.Done()
 	fp, err := os.Open(file)
 	if err != nil {
 		return
 	}
 	defer fp.Close()
-	scanner := bufio.NewScanner(fp)
+	reader := transform.NewReader(fp, encoding.NewDecoder())
+	scanner := bufio.NewScanner(reader)
 	lineNum := 0
 	var greps []grep
 	for scanner.Scan() {
@@ -145,27 +190,34 @@ func grepWorkConc(file string, cra []regexp.Regexp, ia invertArray, wg *sync.Wai
 	}
 	if len(greps) > 0 {
 		grepResult := grepStruct{file, greps}
-		printGrepResult(grepResult)
+		if filenameOnlyFlag {
+			fmt.Println(file)
+		} else {
+			printGrepResult(grepResult)
+		}
 	}
 	if err := scanner.Err(); err != nil {
 		return
 	}
-	return
 }
 
-func grepWork(file string, cra []regexp.Regexp, ia invertArray) error {
+func grepWork(
+	file string,
+	cra []regexp.Regexp,
+	ia invertArray,
+	encoding encoding.Encoding,
+	filenameOnlyFlag bool,
+) {
 	fp, err := os.Open(file)
 	if err != nil {
-		return err
+		return
 	}
 	defer fp.Close()
-	scanner := bufio.NewScanner(fp)
+	reader := transform.NewReader(fp, encoding.NewDecoder())
+	scanner := bufio.NewScanner(reader)
 	// If you want to increase buffer size
 	// const maxBufSize = 256
 	// scanner.Buffer(make([]byte, maxBufSize), maxBufSize)
-
-	// TODO::Transforming char
-
 	lineNum := 0
 	var greps []grep
 	for scanner.Scan() {
@@ -180,12 +232,15 @@ func grepWork(file string, cra []regexp.Regexp, ia invertArray) error {
 	}
 	if len(greps) > 0 {
 		grepResult := grepStruct{file, greps}
-		printGrepResult(grepResult)
+		if filenameOnlyFlag {
+			fmt.Println(file)
+		} else {
+			printGrepResult(grepResult)
+		}
 	}
 	if err := scanner.Err(); err != nil {
-		return err
+		return
 	}
-	return nil
 }
 
 func matchArray(str string, cra []regexp.Regexp) bool {
@@ -203,5 +258,5 @@ func printGrepResult(gr grepStruct) {
 	for i := 0; i < len(gr.greps); i++ {
 		b.WriteString(fmt.Sprintf("%-5d %s\n", gr.greps[i].lineNum, gr.greps[i].line))
 	}
-	fmt.Printf(b.String())
+	fmt.Print(b.String())
 }
