@@ -33,12 +33,6 @@ export GOBIN=<配置パス>
 go install
 ----
 
-Windows/amd64 の場合は以下でビルド済み実行ファイルをローカルにコピーして利用可能。
-
-----
-\\tofs2501\share\開発部\預金2チーム\テホ\cgrep\
-----
-
 == Params
 
 [cols="5*",options="header"]
@@ -119,7 +113,3 @@ utf8, sjis, eucjp, iso2022jp, enckr
 export GOMAXPROCS=1
 cgrep -c pattern
 ----
-
-== Sample Images
-
-image::images/sample1.png[caption="Figure 1"]
