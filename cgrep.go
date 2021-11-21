@@ -73,7 +73,6 @@ func main() {
 	var ra regexArray
 	var ia invertArray
 	var sa skipDirArray
-	var dirs []string
 	encs := []string{"utf8", "sjis", "encjp", "iso2022jp", "enckr"}
 	// In case of encountering .git and .svn directories, cgrep will skip those directories by default
 	defaultSkipDirs := []string{".git", ".svn"}
@@ -89,63 +88,95 @@ func main() {
 	filenameOnlyFlag := flag.Bool("f", false, "Print filename only")
 	flag.Parse()
 
-	// Rest of arguments after parsing flags
-	tail := flag.Args()
+	ra, dirs, err1 := processTailArgs(flag.Args(), ra)
+	if err1 != nil {
+		fmt.Fprintln(os.Stderr, err1.Error())
+		os.Exit(1)
+	}
+	if err2 := validateRegexArray(ra); err2 != nil {
+		fmt.Fprintln(os.Stderr, err2.Error())
+		os.Exit(1)
+	}
+	dirs = setTargetDirs(dirs)
+	sa = setSkipDirs(sa, defaultSkipDirs, *allFlag)
+	cra := compileRegex(ra, *caseInsensitiveFlag)
+	encoding := setEncoding(*enc, encs)
 
-	// Validate arguments
+	grepContents(cra, ia, sa, dirs, *concFlag, encoding, *filenameOnlyFlag)
+}
+
+func processTailArgs(tail []string, ra regexArray) (regexArray, []string, error) {
+	// Process rest of arguments after parsing flags
+	var dirs []string
 	// When there is no -e option, cgrep guess the tail would be the pattern to match
 	if len(ra) == 0 {
 		// If there is no -e options and no tail, cgrep will exit program because there is nothing to search
 		if len(tail) < 1 {
-			fmt.Fprintf(os.Stderr, "Args not enough => len(args) = %d\n", len(tail))
-			os.Exit(1)
+			return ra, dirs, fmt.Errorf("args not enough => len(args) = %d", len(tail))
 		}
 		ra = append(ra, tail[0])
 		dirs = tail[1:]
 	} else {
 		dirs = tail[:]
 	}
+	return ra, dirs, nil
+}
+
+func validateRegexArray(ra regexArray) error {
 	// Exit program because there is no pattern to match
 	if len(ra) < 1 {
-		fmt.Fprintf(os.Stderr, "No regex => len(regex) = %d\n", len(ra))
-		os.Exit(1)
+		return fmt.Errorf("noo regex => len(regex) = %d", len(ra))
 	}
+	return nil
+}
+
+func setTargetDirs(dirs []string) []string {
 	// If there is no designated searching target directory, cgrep search from current directory by default
 	if len(dirs) < 1 {
 		dirs = append(dirs, ".")
 	}
+	return dirs
+}
+
+func setSkipDirs(sa skipDirArray, defaultSkipDirs []string, allFlag bool) skipDirArray {
 	// if all flag is false, append default skip directories (.git, .svn)
-	if !(*allFlag) {
+	if !(allFlag) {
 		for i := 0; i < len(defaultSkipDirs); i++ {
 			sa = append(sa, defaultSkipDirs[i])
 		}
 	}
-	var cra []regexp.Regexp
+	return sa
+}
+
+func setEncoding(enc string, encMaster []string) encoding.Encoding {
+	// Set encoding method according to --enc option
+	switch enc {
+	case encMaster[0]:
+		return unicode.UTF8
+	case encMaster[1]:
+		return japanese.ShiftJIS
+	case encMaster[2]:
+		return japanese.EUCJP
+	case encMaster[3]:
+		return japanese.ISO2022JP
+	case encMaster[4]:
+		return korean.EUCKR
+	default:
+		return unicode.UTF8
+	}
+}
+
+func compileRegex(ra regexArray, caseInsensitiveFlag bool) []regexp.Regexp {
+	var compiledRegexArray []regexp.Regexp
 	for i := 0; i < len(ra); i++ {
-		if *caseInsensitiveFlag {
+		if caseInsensitiveFlag {
 			// In case of case insensitive matching, add (?i) regex
-			cra = append(cra, *regexp.MustCompile("(?i)" + ra[i]))
+			compiledRegexArray = append(compiledRegexArray, *regexp.MustCompile("(?i)" + ra[i]))
 		} else {
-			cra = append(cra, *regexp.MustCompile(ra[i]))
+			compiledRegexArray = append(compiledRegexArray, *regexp.MustCompile(ra[i]))
 		}
 	}
-	// Set encoding method according to --enc option
-	var encoding encoding.Encoding
-	switch *enc {
-	case encs[0]:
-		encoding = unicode.UTF8
-	case encs[1]:
-		encoding = japanese.ShiftJIS
-	case encs[2]:
-		encoding = japanese.EUCJP
-	case encs[3]:
-		encoding = japanese.ISO2022JP
-	case encs[4]:
-		encoding = korean.EUCKR
-	default:
-		encoding = unicode.UTF8
-	}
-	grepContents(cra, ia, sa, dirs, *concFlag, encoding, *filenameOnlyFlag)
+	return compiledRegexArray
 }
 
 func grepContents(
