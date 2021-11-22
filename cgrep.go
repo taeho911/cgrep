@@ -211,7 +211,6 @@ func walkThroughDirs(
 		})
 		if err != nil {
 			fmt.Println(err)
-			os.Exit(1)
 		}
 	}
 	// Block exit until all goroutine is closed
