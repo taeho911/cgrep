@@ -244,28 +244,9 @@ func grepWorkConc(
 	filenameOnlyFlag bool,
 ) {
 	defer wg.Done()
-	// Open and read the target file
-	fp, err := os.Open(file)
+	greps, err := doGrep(file, compiledPatternList, invertList, encoding)
 	if err != nil {
 		return
-	}
-	defer fp.Close()
-	reader := transform.NewReader(fp, encoding.NewDecoder())
-	scanner := bufio.NewScanner(reader)
-	lineNum := 0
-	var greps []grep
-	// Scan the file line by line
-	for scanner.Scan() {
-		lineNum++
-		line := scanner.Text()
-		// If the content contains pattern not to match, skip the line
-		if len(invertList) > 0 && matchArray(line, invertList) {
-			continue
-		}
-		// If the content contains pattern to match, save the line information
-		if matchArray(line, compiledPatternList) {
-			greps = append(greps, grep{lineNum, line})
-		}
 	}
 	// If the target file matched at least one pattern, save the target file information
 	if len(greps) > 0 {
@@ -275,9 +256,6 @@ func grepWorkConc(
 		} else {
 			printGrepResult(grepResult)
 		}
-	}
-	if err := scanner.Err(); err != nil {
-		return
 	}
 }
 
@@ -289,10 +267,25 @@ func grepWork(
 	encoding encoding.Encoding,
 	filenameOnlyFlag bool,
 ) {
-	// Open and read the target file
-	fp, err := os.Open(file)
+	greps, err := doGrep(file, compiledPatternList, invertList, encoding)
 	if err != nil {
 		return
+	}
+	// If the target file matched at least one pattern, save the target file information
+	if len(greps) > 0 {
+		grepResult := grepStruct{file, greps}
+		if filenameOnlyFlag {
+			fmt.Println(file)
+		} else {
+			printGrepResult(grepResult)
+		}
+	}
+}
+
+func doGrep(file string, compiledPatternList []regexp.Regexp, invertList invertArray, encoding encoding.Encoding) ([]grep, error) {
+	fp, err := os.Open(file)
+	if err != nil {
+		return nil, err
 	}
 	defer fp.Close()
 	reader := transform.NewReader(fp, encoding.NewDecoder())
@@ -302,7 +295,6 @@ func grepWork(
 	// scanner.Buffer(make([]byte, maxBufSize), maxBufSize)
 	lineNum := 0
 	var greps []grep
-	// Scan the file line by line
 	for scanner.Scan() {
 		lineNum++
 		line := scanner.Text()
@@ -315,18 +307,10 @@ func grepWork(
 			greps = append(greps, grep{lineNum, line})
 		}
 	}
-	// If the target file matched at least one pattern, save the target file information
-	if len(greps) > 0 {
-		grepResult := grepStruct{file, greps}
-		if filenameOnlyFlag {
-			fmt.Println(file)
-		} else {
-			printGrepResult(grepResult)
-		}
-	}
 	if err := scanner.Err(); err != nil {
-		return
+		return nil, err
 	}
+	return greps, nil
 }
 
 func matchArray(str string, compiledPatternList []regexp.Regexp) bool {
