@@ -69,18 +69,19 @@ func (sa *skipDirArray) Set(val string) error {
 
 // --------------------------------------------------------
 
+// main function mainly does setting of flags and parsing it
 func main() {
-	var ra regexArray
-	var ia invertArray
-	var sa skipDirArray
+	var patternList regexArray
+	var invertList invertArray
+	var skipDirList skipDirArray
 	encs := []string{"utf8", "sjis", "encjp", "iso2022jp", "enckr"}
 	// In case of encountering .git and .svn directories, cgrep will skip those directories by default
 	defaultSkipDirs := []string{".git", ".svn"}
 
 	// Setting available flags
-	flag.Var(&ra, "e", "Regex")
-	flag.Var(&ia, "v", "Invert match")
-	flag.Var(&sa, "s", "Skip dir")
+	flag.Var(&patternList, "e", "Regex")
+	flag.Var(&invertList, "v", "Invert match")
+	flag.Var(&skipDirList, "s", "Skip dir")
 	allFlag := flag.Bool("all", false, "Search all directories including .git and .svn")
 	concFlag := flag.Bool("c", false, "Concurrent search")
 	caseInsensitiveFlag := flag.Bool("i", false, "Case insensitive match")
@@ -88,44 +89,44 @@ func main() {
 	filenameOnlyFlag := flag.Bool("f", false, "Print filename only")
 	flag.Parse()
 
-	ra, dirs, err1 := processTailArgs(flag.Args(), ra)
+	patternList, dirs, err1 := processTailArgs(flag.Args(), patternList)
 	if err1 != nil {
 		fmt.Fprintln(os.Stderr, err1.Error())
 		os.Exit(1)
 	}
-	if err2 := validateRegexArray(ra); err2 != nil {
+	if err2 := validateRegexArray(patternList); err2 != nil {
 		fmt.Fprintln(os.Stderr, err2.Error())
 		os.Exit(1)
 	}
 	dirs = setTargetDirs(dirs)
-	sa = setSkipDirs(sa, defaultSkipDirs, *allFlag)
-	cra := compileRegex(ra, *caseInsensitiveFlag)
+	skipDirList = setSkipDirs(skipDirList, defaultSkipDirs, *allFlag)
+	compiledPatternList := compileRegex(patternList, *caseInsensitiveFlag)
 	encoding := setEncoding(*enc, encs)
 
-	grepContents(cra, ia, sa, dirs, *concFlag, encoding, *filenameOnlyFlag)
+	walkThroughDirs(compiledPatternList, invertList, skipDirList, dirs, *concFlag, encoding, *filenameOnlyFlag)
 }
 
-func processTailArgs(tail []string, ra regexArray) (regexArray, []string, error) {
+func processTailArgs(tail []string, patternList regexArray) (regexArray, []string, error) {
 	// Process rest of arguments after parsing flags
 	var dirs []string
 	// When there is no -e option, cgrep guess the tail would be the pattern to match
-	if len(ra) == 0 {
+	if len(patternList) == 0 {
 		// If there is no -e options and no tail, cgrep will exit program because there is nothing to search
 		if len(tail) < 1 {
-			return ra, dirs, fmt.Errorf("args not enough => len(args) = %d", len(tail))
+			return patternList, dirs, fmt.Errorf("args not enough => len(args) = %d", len(tail))
 		}
-		ra = append(ra, tail[0])
+		patternList = append(patternList, tail[0])
 		dirs = tail[1:]
 	} else {
 		dirs = tail[:]
 	}
-	return ra, dirs, nil
+	return patternList, dirs, nil
 }
 
-func validateRegexArray(ra regexArray) error {
+func validateRegexArray(patternList regexArray) error {
 	// Exit program because there is no pattern to match
-	if len(ra) < 1 {
-		return fmt.Errorf("noo regex => len(regex) = %d", len(ra))
+	if len(patternList) < 1 {
+		return fmt.Errorf("noo regex => len(regex) = %d", len(patternList))
 	}
 	return nil
 }
@@ -166,23 +167,23 @@ func setEncoding(enc string, encMaster []string) encoding.Encoding {
 	}
 }
 
-func compileRegex(ra regexArray, caseInsensitiveFlag bool) []regexp.Regexp {
+func compileRegex(patternList regexArray, caseInsensitiveFlag bool) []regexp.Regexp {
 	var compiledRegexArray []regexp.Regexp
-	for i := 0; i < len(ra); i++ {
+	for i := 0; i < len(patternList); i++ {
 		if caseInsensitiveFlag {
 			// In case of case insensitive matching, add (?i) regex
-			compiledRegexArray = append(compiledRegexArray, *regexp.MustCompile("(?i)" + ra[i]))
+			compiledRegexArray = append(compiledRegexArray, *regexp.MustCompile("(?i)" + patternList[i]))
 		} else {
-			compiledRegexArray = append(compiledRegexArray, *regexp.MustCompile(ra[i]))
+			compiledRegexArray = append(compiledRegexArray, *regexp.MustCompile(patternList[i]))
 		}
 	}
 	return compiledRegexArray
 }
 
-func grepContents(
-	cra []regexp.Regexp,
-	ia invertArray,
-	sa skipDirArray,
+func walkThroughDirs(
+	compiledPatternList []regexp.Regexp,
+	invertList invertArray,
+	skipDirList skipDirArray,
 	dirs []string,
 	concFlag bool,
 	encoding encoding.Encoding,
@@ -190,22 +191,9 @@ func grepContents(
 ) {
 	// Make wait group to control goroutine
 	var wg sync.WaitGroup
-	// Walk through searching target dirs
 	for i := 0; i < len(dirs); i++ {
 		err := filepath.Walk(dirs[i], func(path string, info os.FileInfo, err error) error {
-			skipDir := false
-			if info == nil {
-				return filepath.SkipDir
-			}
-			fileName := info.Name()
-			// If the name of dir is in skip dirs list, skip searching
-			for i := 0; i < len(sa); i++ {
-				if fileName == sa[i] {
-					skipDir = true
-					break
-				}
-			}
-			if skipDir {
+			if isSkipDir(info, skipDirList) {
 				return filepath.SkipDir
 			}
 			// In case of file
@@ -213,10 +201,10 @@ func grepContents(
 				// Concurrent searching via goroutine
 				if concFlag {
 					wg.Add(1)
-					go grepWorkConc(path, cra, ia, encoding, &wg, filenameOnlyFlag)
+					go grepWorkConc(path, compiledPatternList, invertList, encoding, &wg, filenameOnlyFlag)
 				} else {
 					// Normal searching
-					grepWork(path, cra, ia, encoding, filenameOnlyFlag)
+					grepWork(path, compiledPatternList, invertList, encoding, filenameOnlyFlag)
 				}
 			}
 			return nil
@@ -230,11 +218,27 @@ func grepContents(
 	wg.Wait()
 }
 
+func isSkipDir(info os.FileInfo, skipDirList skipDirArray) bool {
+	if info == nil || isInSkipDirList(info.Name(), skipDirList) {
+		return true
+	}
+	return false
+}
+
+func isInSkipDirList(thing string, array []string) bool {
+	for i := 0; i < len(array); i++ {
+		if thing == array[i] {
+			return true
+		}
+	}
+	return false
+}
+
 // Actually grepping function for concurrent searching
 func grepWorkConc(
 	file string,
-	cra []regexp.Regexp,
-	ia invertArray,
+	compiledPatternList []regexp.Regexp,
+	invertList invertArray,
 	encoding encoding.Encoding,
 	wg *sync.WaitGroup,
 	filenameOnlyFlag bool,
@@ -255,11 +259,11 @@ func grepWorkConc(
 		lineNum++
 		line := scanner.Text()
 		// If the content contains pattern not to match, skip the line
-		if len(ia) > 0 && matchArray(line, ia) {
+		if len(invertList) > 0 && matchArray(line, invertList) {
 			continue
 		}
 		// If the content contains pattern to match, save the line information
-		if matchArray(line, cra) {
+		if matchArray(line, compiledPatternList) {
 			greps = append(greps, grep{lineNum, line})
 		}
 	}
@@ -280,8 +284,8 @@ func grepWorkConc(
 // Actually grepping function for normal searching
 func grepWork(
 	file string,
-	cra []regexp.Regexp,
-	ia invertArray,
+	compiledPatternList []regexp.Regexp,
+	invertList invertArray,
 	encoding encoding.Encoding,
 	filenameOnlyFlag bool,
 ) {
@@ -303,11 +307,11 @@ func grepWork(
 		lineNum++
 		line := scanner.Text()
 		// If the content contains pattern not to match, skip the line
-		if len(ia) > 0 && matchArray(line, ia) {
+		if len(invertList) > 0 && matchArray(line, invertList) {
 			continue
 		}
 		// If the content contains pattern to match, save the line information
-		if matchArray(line, cra) {
+		if matchArray(line, compiledPatternList) {
 			greps = append(greps, grep{lineNum, line})
 		}
 	}
@@ -325,9 +329,9 @@ func grepWork(
 	}
 }
 
-func matchArray(str string, cra []regexp.Regexp) bool {
-	for i := 0; i < len(cra); i++ {
-		if cra[i].MatchString(str) {
+func matchArray(str string, compiledPatternList []regexp.Regexp) bool {
+	for i := 0; i < len(compiledPatternList); i++ {
+		if compiledPatternList[i].MatchString(str) {
 			return true
 		}
 	}
