@@ -20,6 +20,8 @@ import (
 type regexArray []string
 type invertArray []regexp.Regexp
 type skipDirArray []string
+type skipFileArray []regexp.Regexp
+
 type grep struct {
 	lineNum int
 	line    string
@@ -47,25 +49,37 @@ func (ia *invertArray) Set(val string) error {
 	return nil
 }
 
-func (sa *skipDirArray) String() string {
+func (sda *skipDirArray) String() string {
 	return ""
 }
 
-func (sa *skipDirArray) Set(val string) error {
-	*sa = append(*sa, val)
+func (sda *skipDirArray) Set(val string) error {
+	*sda = append(*sda, val)
+	return nil
+}
+
+func (sfa *skipFileArray) String() string {
+	return ""
+}
+
+func (sfa *skipFileArray) Set(val string) error {
+	*sfa = append(*sfa, *regexp.MustCompile(val))
 	return nil
 }
 
 func main() {
 	var ra regexArray
 	var ia invertArray
-	var sa skipDirArray
+	var sda skipDirArray
+	var sfa skipFileArray
 	var dirs []string
 	encs := []string{"utf8", "sjis", "encjp", "iso2022jp", "enckr"}
 	defaultSkipDirs := []string{".git", ".svn"}
-	flag.Var(&ra, "e", "Regex")
-	flag.Var(&ia, "v", "Invert match")
-	flag.Var(&sa, "s", "Skip dir")
+
+	flag.Var(&ra, "e", "Pattern [regex]")
+	flag.Var(&ia, "v", "Invert match [regex]")
+	flag.Var(&sda, "s", "Skip dir")
+	flag.Var(&sfa, "skipfile", "Skip file [regex]")
 	allFlag := flag.Bool("all", false, "Search all directories including .git and .svn")
 	concFlag := flag.Bool("c", false, "Concurrent search")
 	caseInsensitiveFlag := flag.Bool("i", false, "Case insensitive match")
@@ -73,6 +87,7 @@ func main() {
 	filenameOnlyFlag := flag.Bool("f", false, "Print filename only")
 	flag.Parse()
 	tail := flag.Args()
+
 	if len(ra) == 0 {
 		if len(tail) < 1 {
 			fmt.Fprintf(os.Stderr, "Args not enough => len(args) = %d\n", len(tail))
@@ -92,7 +107,7 @@ func main() {
 	}
 	if !(*allFlag) {
 		for i := 0; i < len(defaultSkipDirs); i++ {
-			sa = append(sa, defaultSkipDirs[i])
+			sda = append(sda, defaultSkipDirs[i])
 		}
 	}
 	var cra []regexp.Regexp
@@ -118,13 +133,14 @@ func main() {
 	default:
 		encoding = unicode.UTF8
 	}
-	grepContents(cra, ia, sa, dirs, *concFlag, encoding, *filenameOnlyFlag)
+	grepContents(cra, ia, sda, sfa, dirs, *concFlag, encoding, *filenameOnlyFlag)
 }
 
 func grepContents(
 	cra []regexp.Regexp,
 	ia invertArray,
-	sa skipDirArray,
+	sda skipDirArray,
+	sfa skipFileArray,
 	dirs []string,
 	concFlag bool,
 	encoding encoding.Encoding,
@@ -138,8 +154,8 @@ func grepContents(
 				return filepath.SkipDir
 			}
 			fileName := info.Name()
-			for i := 0; i < len(sa); i++ {
-				if fileName == sa[i] {
+			for i := 0; i < len(sda); i++ {
+				if fileName == sda[i] {
 					skipDir = true
 					break
 				}
@@ -148,6 +164,9 @@ func grepContents(
 				return filepath.SkipDir
 			}
 			if !info.IsDir() {
+				if len(sfa) > 0 && matchArray(fileName, sfa) {
+					return nil
+				}
 				if concFlag {
 					wg.Add(1)
 					go grepWorkConc(path, cra, ia, encoding, &wg, filenameOnlyFlag)
