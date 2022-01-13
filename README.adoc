@@ -4,7 +4,7 @@
 
 == Summary
 
-指定されたディレクトリに配置されている全てのファイルを読み込み、中身から grep するツール。
+지정한 디렉토리 밑에 있는 모든 파일들을 리컬시브하게 읽어들여 지정한 패턴을 그랩하는 툴이다.
 
 == Prerequisite
 
@@ -13,30 +13,23 @@ https://golang.org/doc/install[Go 1.16]
 == Build
 
 ----
-git clone http://pcommgt01v/vendor/reds/cgrep.git cgrep
 cd cgrep
 go install
 ----
 
-ビルドされた実行ファイルは $GOPATH/bin に配置される。
+빌드된 실행파일은 $GOPATH/bin에 배치된다.
 
-$GOPATH を確認したい場合は以下のコマンドを実行する。
+$GOPATH를 확인하려면 아래의 커맨드를 실행한다.
 
 ----
 go env GOPATH
 ----
 
-もし、他の場所に実行ファイルを配置したい場合は go install 前に $GOBIN をエクスポートしておく。
+혹시 다른 패스에 실행파일을 배치하고 싶은 경우, go install을 실행하기 전에 $GOBIN을 엑스포트한다.
 
 ----
-export GOBIN=<配置パス>
+export GOBIN=<디렉토리 패스>
 go install
-----
-
-Windows/amd64 の場合は以下でビルド済み実行ファイルをローカルにコピーして利用可能。
-
-----
-\\tofs2501\share\開発部\預金2チーム\テホ\cgrep\
 ----
 
 == Params
@@ -46,49 +39,49 @@ Windows/amd64 の場合は以下でビルド済み実行ファイルをローカ
 |Option|Explanation|Type|Default|Example
 
 |-e
-|複数の pattern を指定
+|복수의 pattern을 지정
 |string
 |
 |cgrep -e pattern1 -e pattern2
 
 |-v
-|除外する pattern を指定
+|검색에서 제외할 pattern을 지정
 |string
 |
 |cgrep -v foo -v bar pattern dir
 
 |-s
-|検索をスキップするディレクトリ
+|검색을 스킵할 디렉토리
 |string
 |
 |cgrep -s target -s .git pattern
 
 |-c
-|Concurrency 使用有無
+|Concurrency 검색 사용여부
 |bool
 |false
 |cgrep -c pattern dir1 dir2
 
 |-i
-|Case insensitive 検索
+|Case insensitive 검색유무
 |bool
 |false
 |cgrep -i pattern
 
 |--enc
-|Encoding を指定
+|Encoding 지정
 |string
 |utf8
 |cgrep --enc sjis pattern
 
 |--all
-|.git/.svn ディレクトリスキップ解除
+|.git/.svn 디렉토리의 검색스킵을 해제
 |bool
 |false
 |cgrep --all pattern
 
 |-f
-|ファイル名だけ出力
+|그랩된 파일명만 출력
 |bool
 |false
 |cgrep -f pattern
@@ -96,30 +89,26 @@ Windows/amd64 の場合は以下でビルド済み実行ファイルをローカ
 
 == Tips
 
-=== 指定可能な Encoding
+=== 지정 가능한 Encoding
 
 utf8, sjis, eucjp, iso2022jp, enckr
 
-=== デフォルト検索の挙動
+=== 디폴트 검색의 거동
 
-..git と ..svn ディレクトリはデフォルトで検索をスキップする。
+..git 디렉토리와 ..svn 디렉토리는 디폴트로 검색을 스킵한다.
 
-=== Concurrency について
+=== Concurrency에 대하여
 
-設定すると従来の直列的作業を concurrent 作業に変える。
+c옵션을 지정하면 기존의 직렬적 검색을 병렬적 검색으로 변경한다.
 
-これにより、検索速度が上昇するが、検索結果の出力順番が変化することが良くある。
+이로 인해 검색속도가 향상되지만, 검색결과의 출력 순서가 바뀐다.
 
-その理由は concurrency オプションを指定した場合、プログラムは goroutine で作業を並列的に進めるためである。（goroutine != thread）
+왜냐하면 c옵션을 지정할 경우 프로그램은 goroutine을 활용하여 병렬적으로 작업을 처리하기 때문이다. (goroutine != thread)
 
-基本的に使用可能な cpu core を使うが（Go 1.15 以前のバージョンではデフォルトで 1 core しか使わない）、もし使われる cpu core 数を制限したければ以下のように GOMAXPROCS を指定する。
+기본적으로 goroutine의 병렬적 처리는 사용 가능한 모든 cpu 코어를 사용하지만 (go 1.15 이전 버전에서는 디폴트로 1 코어만을 사용한다), 혹시 사용되는 코어수를 제한하려면 아래처럼 GOMAXPROCS을 사전에 지정하면 된다.
 
 ----
-# CPU core を1個だけ使って parallelism を無くす。
+# CPU core를 1개만 사용하여 parallelism (!= Concurrency)을 없앤다.
 export GOMAXPROCS=1
 cgrep -c pattern
 ----
-
-== Sample Images
-
-image::images/sample1.png[caption="Figure 1"]
